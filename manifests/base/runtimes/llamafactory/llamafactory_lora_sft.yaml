@@ -1,0 +1,49 @@
+apiVersion: trainer.kubeflow.org/v1alpha1
+kind: ClusterTrainingRuntime
+metadata:
+  name: llamafactory-lora-sft
+  labels:
+    trainer.kubeflow.org/framework: llamafactory
+spec:
+  mlPolicy:
+    numNodes: 1
+    torch: {}
+  template:
+    spec:
+      replicatedJobs:
+      - name: node
+        template:
+          metadata:
+            labels:
+              trainer.kubeflow.org/trainjob-ancestor-step: trainer
+          spec:
+            template:
+              spec:
+                containers:
+                - name: node
+                  image: ghcr.io/kubeflow/trainer/llamafactory-trainer
+                  command:
+                  - sh
+                  - -c
+                  - |
+                    # Download model and dataset before training
+                    huggingface-cli download Qwen/Qwen3-0.6B --local-dir /workspace/model
+                    cd /workspace && python -m datasets.arrow_dataset --repo-id tatsu-lab/alpaca --cache-dir /workspace/dataset 2>/dev/null || \
+                    git clone https://huggingface.co/datasets/tatsu-lab/alpaca /workspace/dataset
+                    # Start training
+                    llamafactory-cli train /config/training.yaml
+                  resources:
+                    limits:
+                      nvidia.com/gpu: 1
+                  volumeMounts:
+                  - mountPath: /workspace
+                    name: workspace
+                  - mountPath: /config
+                    name: training-config
+                volumes:
+                - name: workspace
+                  emptyDir:
+                    sizeLimit: 20Gi
+                - name: training-config
+                  configMap:
+                    name: llamafactory-lora-sft-config

@@ -1,0 +1,13 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+- ../../base/runtimes/llamafactory
+
+# Update image tags for llamafactory runtime only.
+images:
+- name: ghcr.io/kubeflow/trainer/llamafactory-trainer
+  newTag: sha-e51d370
+- name: ghcr.io/kubeflow/trainer/dataset-initializer
+  newTag: latest
+- name: ghcr.io/kubeflow/trainer/model-initializer
+  newTag: latest
