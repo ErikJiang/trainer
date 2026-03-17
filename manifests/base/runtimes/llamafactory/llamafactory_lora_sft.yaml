@@ -1,0 +1,104 @@
+apiVersion: trainer.kubeflow.org/v1alpha1
+kind: ClusterTrainingRuntime
+metadata:
+  name: llamafactory-lora-sft
+  labels:
+    trainer.kubeflow.org/framework: llamafactory
+spec:
+  mlPolicy:
+    numNodes: 1
+    torch:
+      numProcPerNode: auto
+  template:
+    spec:
+      replicatedJobs:
+      - name: dataset-initializer
+        template:
+          metadata:
+            labels:
+              trainer.kubeflow.org/trainjob-ancestor-step: dataset-initializer
+          spec:
+            template:
+              spec:
+                containers:
+                - name: dataset-initializer
+                  image: ghcr.io/kubeflow/trainer/dataset-initializer
+                  env:
+                  - name: HF_ENDPOINT
+                    value: "https://hf-mirror.com"
+                  - name: STORAGE_URI
+                    value: hf://tatsu-lab/alpaca
+                  volumeMounts:
+                  - mountPath: /workspace
+                    name: initializer
+                volumes:
+                - name: initializer
+                  persistentVolumeClaim:
+                    claimName: llamafactory-lora-sft
+      - name: model-initializer
+        template:
+          metadata:
+            labels:
+              trainer.kubeflow.org/trainjob-ancestor-step: model-initializer
+          spec:
+            template:
+              spec:
+                containers:
+                - name: model-initializer
+                  image: ghcr.io/kubeflow/trainer/model-initializer
+                  env:
+                  - name: HF_ENDPOINT
+                    value: "https://hf-mirror.com"
+                  - name: STORAGE_URI
+                    value: hf://Qwen/Qwen3-0.6B
+                  volumeMounts:
+                  - name: initializer
+                    mountPath: /workspace
+                volumes:
+                - name: initializer
+                  persistentVolumeClaim:
+                    claimName: llamafactory-lora-sft
+      - name: node
+        dependsOn:
+        - name: dataset-initializer
+          status: Complete
+        - name: model-initializer
+          status: Complete
+        template:
+          metadata:
+            labels:
+              trainer.kubeflow.org/trainjob-ancestor-step: trainer
+          spec:
+            template:
+              spec:
+                containers:
+                - name: node
+                  # image: docker.io/hiyouga/llamafactory:0.9.4
+                  image: docker.m.daocloud.io/hiyouga/llamafactory:latest
+                  command:
+                  - /bin/sh
+                  - -c
+                  - |
+                    export NNODES=${PET_NNODES:-1}
+                    export NODE_RANK=${PET_NODE_RANK:-0}
+                    export NPROC_PER_NODE=${PET_NPROC_PER_NODE:-1}
+                    export MASTER_ADDR=${PET_MASTER_ADDR:-127.0.0.1}
+                    export MASTER_PORT=${PET_MASTER_PORT:-29400}
+                    export FORCE_TORCHRUN=1
+                    echo "[runtime] Distributed config: NNODES=$NNODES, NODE_RANK=$NODE_RANK, NPROC_PER_NODE=$NPROC_PER_NODE, MASTER_ADDR=$MASTER_ADDR, MASTER_PORT=$MASTER_PORT"
+                    exec llamafactory-cli train /config/training.yaml
+                  resources:
+                    limits:
+                      nvidia.com/gpu: 1
+                  volumeMounts:
+                  - mountPath: /workspace
+                    name: initializer
+                  - mountPath: /config
+                    name: training-config
+                volumes:
+                - name: initializer
+                  persistentVolumeClaim:
+                    claimName: llamafactory-lora-sft
+                - name: training-config
+                  configMap:
+                    name: llamafactory-lora-sft-config
