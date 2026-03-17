@@ -1,0 +1,8 @@
+FROM docker.m.daocloud.io/hiyouga/llamafactory:latest
+
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONPATH=/opt/llamafactory-ext:${PYTHONPATH}
+
+COPY examples/llamafactory/llamafactory_ext /opt/llamafactory-ext/llamafactory_ext
+
+RUN pip install --no-cache-dir protobuf python-snappy requests
