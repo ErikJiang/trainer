@@ -1,0 +1,14 @@
+apiVersion: trainer.kubeflow.org/v1alpha1
+kind: TrainJob
+metadata:
+  name: llamafactory-lora-sft-demo
+spec:
+  runtimeRef:
+    name: llamafactory-lora-sft
+  trainer:
+    numNodes: 1
+    resourcesPerNode:
+      requests:
+        nvidia.com/gpu: 1
+      limits:
+        nvidia.com/gpu: 1

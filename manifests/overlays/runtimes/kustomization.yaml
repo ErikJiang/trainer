@@ -15,3 +15,5 @@ images:
     newTag: v2.1.0
   - name: ghcr.io/kubeflow/trainer/deepspeed-runtime
     newTag: v2.1.0
+  - name: release-ci.daocloud.io/hydra/llamafactory-trainer
+    newTag: sha-362a30a
