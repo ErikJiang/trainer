@@ -249,6 +249,29 @@ const (
 	// TorchTuneCheckpointerDir is the config item name for the checkpointer directory.
 	TorchTuneCheckpointDir string = "checkpointer.checkpoint_dir"
 
+	// LLaMA Factory bridge envs.
+	// LLaMA Factory launcher reads unprefixed variables (NNODES, MASTER_ADDR, etc.)
+	// instead of PET_ prefixed variables used by torchrun/torchtune.
+	// Ref: https://github.com/hiyouga/LLaMA-Factory/blob/main/src/llamafactory/launcher.py
+
+	// LlamaFactoryEnvNumNodes is the bridge env name for the number of training nodes.
+	LlamaFactoryEnvNumNodes string = "NNODES"
+
+	// LlamaFactoryEnvNumProcPerNode is the bridge env name for the number of procs per node.
+	LlamaFactoryEnvNumProcPerNode string = "NPROC_PER_NODE"
+
+	// LlamaFactoryEnvNodeRank is the bridge env name for the node RANK.
+	LlamaFactoryEnvNodeRank string = "NODE_RANK"
+
+	// LlamaFactoryEnvMasterAddr is the bridge env name for the master node address.
+	LlamaFactoryEnvMasterAddr string = "MASTER_ADDR"
+
+	// LlamaFactoryEnvMasterPort is the bridge env name for the master node port.
+	LlamaFactoryEnvMasterPort string = "MASTER_PORT"
+
+	// LlamaFactoryEnvForceTorchrun is the env name to force LLaMA Factory to use torchrun.
+	LlamaFactoryEnvForceTorchrun string = "FORCE_TORCHRUN"
+
 	// Distributed envs for XGBoost collective/Rabit.
 	// Ref:TODO[krishna-kg732]: Add the correct link(update XG boost docs)
 
@@ -286,6 +309,13 @@ var (
 	// TorchRunReservedEnvNames is torchrun reserved env names
 	TorchRunReservedEnvNames = sets.New(TorchEnvNumNodes, TorchEnvNumProcPerNode, TorchEnvNodeRank, TorchEnvMasterAddr, TorchEnvMasterPort)
 
+	// LlamaFactoryReservedEnvNames is a set of env names reserved for LLaMA Factory bridge variables.
+	// These are injected by the Torch plugin and must not be set by users.
+	LlamaFactoryReservedEnvNames = sets.New(
+		LlamaFactoryEnvNumNodes, LlamaFactoryEnvNumProcPerNode, LlamaFactoryEnvNodeRank,
+		LlamaFactoryEnvMasterAddr, LlamaFactoryEnvMasterPort, LlamaFactoryEnvForceTorchrun,
+	)
+
 	// XGBoostReservedEnvNames is XGBoost reserved env names that should not be set by users.
 	XGBoostReservedEnvNames = sets.New(XGBoostEnvTrackerURI, XGBoostEnvTrackerPort, XGBoostEnvTaskID, XGBoostEnvNumWorker)
 
@@ -297,6 +327,9 @@ var (
 
 	// TorchTuneEntrypoint is the entrypoint for the torchtune.
 	TorchTuneEntrypoint = []string{"tune", "run"}
+
+	// LlamaFactoryEntrypoint is the entrypoint for the LLaMA Factory trainer.
+	LlamaFactoryEntrypoint = []string{"llamafactory-cli", "train"}
 
 	// TorchTuneImmutableConfigs is the set of immutable configs for the TorchTune Trainer.
 	TorchTuneImmutableConfigs = sets.New(TorchTuneModelOutputDir, TorchTuneTokenizerPath, TorchTuneCheckpointDir, TorchTuneTokenizerMergeFile)

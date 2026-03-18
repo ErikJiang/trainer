@@ -62,10 +62,23 @@ func (t *Torch) Validate(_ context.Context, runtimeInfo *runtime.Info, _, newObj
 	specPath := field.NewPath("spec")
 
 	if newObj.Spec.Trainer != nil {
+		// Determine effective command from runtime container, with user override.
+		var effectiveCommand []string
+		if trainerContainer := runtimeInfo.FindContainerByPodSetAncestorContainerName(constants.AncestorTrainer, constants.Node); trainerContainer != nil {
+			effectiveCommand = trainerContainer.Command
+		}
+		if newObj.Spec.Trainer.Command != nil {
+			effectiveCommand = newObj.Spec.Trainer.Command
+		}
+
 		// Check reserved envs.
+		reservedEnvs := constants.TorchRunReservedEnvNames
+		if hasEntrypoint(effectiveCommand, constants.LlamaFactoryEntrypoint) {
+			reservedEnvs = reservedEnvs.Union(constants.LlamaFactoryReservedEnvNames)
+		}
 		torchEnvs := sets.New[string]()
 		for _, env := range newObj.Spec.Trainer.Env {
-			if constants.TorchRunReservedEnvNames.Has(env.Name) {
+			if reservedEnvs.Has(env.Name) {
 				torchEnvs.Insert(env.Name)
 			}
 		}
@@ -77,7 +90,7 @@ func (t *Torch) Validate(_ context.Context, runtimeInfo *runtime.Info, _, newObj
 
 		// Check supported pretrained models for torchtune.
 		// TODO(Electronic-Waste): Add more validation for torchtune when we support more arguments.
-		if slices.Equal(newObj.Spec.Trainer.Command, constants.TorchTuneEntrypoint) {
+		if hasEntrypoint(effectiveCommand, constants.TorchTuneEntrypoint) {
 			_, torchTuneErrs := validateTorchTune(runtimeInfo, newObj)
 			allErrs = append(allErrs, torchTuneErrs...)
 		}
@@ -138,7 +151,16 @@ func (t *Torch) EnforceMLPolicy(info *runtime.Info, trainJob *trainer.TrainJob) 
 						WithFieldPath(constants.JobCompletionIndexFieldPath))),
 		)
 
-		if !slices.Equal(trainJob.Spec.Trainer.Command, constants.TorchTuneEntrypoint) {
+		// Determine effective command: user override takes precedence, fallback to runtime container command.
+		effectiveCommand := trainerContainer.Command
+		if trainJob.Spec.Trainer.Command != nil {
+			effectiveCommand = trainJob.Spec.Trainer.Command
+		}
+
+		if hasEntrypoint(effectiveCommand, constants.LlamaFactoryEntrypoint) {
+			// LLaMA Factory: inject PET_MASTER_ADDR/PORT and bridge all PET_ vars to unprefixed names.
+			enforceLlamaFactoryPolicy(trainerContainer, trainJob, trainerPS, numProcPerNode.String())
+		} else if !hasEntrypoint(effectiveCommand, constants.TorchTuneEntrypoint) {
 			// Add PET_MASTER_ADDR and PET_MASTER_PORT envs for torchrun.
 			apply.UpsertEnvVars(&trainerContainer.Env,
 				*corev1ac.EnvVar().
@@ -178,6 +200,11 @@ func (t *Torch) EnforceMLPolicy(info *runtime.Info, trainJob *trainer.TrainJob) 
 	}
 
 	return nil
+}
+
+// hasEntrypoint reports whether command starts with the given entrypoint prefix.
+func hasEntrypoint(command, entrypoint []string) bool {
+	return len(command) >= len(entrypoint) && slices.Equal(command[:len(entrypoint)], entrypoint)
 }
 
 // getNumCPUPerNode calculates the number of CPU processes per node based on the provided resources.

@@ -1916,6 +1916,72 @@ func TestTrainingRuntimeNewObjects(t *testing.T) {
 					Obj(),
 			},
 		},
+		"succeeded to build JobSet with LlamaFactory env bridging (command from runtime)": {
+			trainingRuntime: testingutil.MakeTrainingRuntimeWrapper(metav1.NamespaceDefault, "llamafactory-lora-sft").RuntimeSpec(
+				testingutil.MakeTrainingRuntimeSpecWrapper(testingutil.MakeTrainingRuntimeWrapper(metav1.NamespaceDefault, "llamafactory-lora-sft").Spec).
+					WithMLPolicy(
+						testingutil.MakeMLPolicyWrapper().
+							WithNumNodes(1).
+							WithMLPolicySource(*testingutil.MakeMLPolicySourceWrapper().
+								TorchPolicy().
+								Obj(),
+							).
+							Obj(),
+					).
+					JobSetSpec(
+						testingutil.MakeJobSetWrapper("", "").Obj().Spec,
+					).
+					Container(
+						constants.Node, constants.Node, "ghcr.io/kubeflow/trainer/llamafactory-trainer",
+						[]string{"llamafactory-cli", "train", "/config/training.yaml"},
+						nil,
+						resRequests,
+					).Obj(),
+			).Obj(),
+			trainJob: testingutil.MakeTrainJobWrapper(metav1.NamespaceDefault, "test-job").
+				UID("uid").
+				RuntimeRef(trainer.SchemeGroupVersion.WithKind(trainer.TrainingRuntimeKind), "llamafactory-lora-sft").
+				Trainer(
+					testingutil.MakeTrainJobTrainerWrapper().
+						NumNodes(2).
+						Obj(),
+				).Obj(),
+			wantObjs: []runtime.Object{
+				testingutil.MakeJobSetWrapper(metav1.NamespaceDefault, "test-job").
+					ControllerReference(trainer.SchemeGroupVersion.WithKind(trainer.TrainJobKind), "test-job", "uid").
+					Replicas(1, constants.DatasetInitializer, constants.ModelInitializer, constants.Node, constants.Launcher).
+					Parallelism(1, constants.DatasetInitializer, constants.ModelInitializer).
+					Completions(1, constants.DatasetInitializer, constants.ModelInitializer).
+					NumNodes(2).
+					Container(
+						constants.Node, constants.Node, "ghcr.io/kubeflow/trainer/llamafactory-trainer",
+						[]string{"llamafactory-cli", "train", "/config/training.yaml"},
+						nil,
+						resRequests,
+					).
+					ContainerTrainerPorts([]corev1.ContainerPort{{ContainerPort: constants.ContainerTrainerPort}}).
+					Env(constants.Node, constants.Node,
+						[]corev1.EnvVar{
+							{Name: constants.TorchEnvNumNodes, Value: "2"},
+							{Name: constants.TorchEnvNumProcPerNode, Value: "1"},
+							{Name: constants.TorchEnvNodeRank, ValueFrom: &corev1.EnvVarSource{
+								FieldRef: &corev1.ObjectFieldSelector{FieldPath: constants.JobCompletionIndexFieldPath},
+							}},
+							{Name: constants.TorchEnvMasterAddr, Value: "test-job-node-0-0.test-job"},
+							{Name: constants.TorchEnvMasterPort, Value: fmt.Sprintf("%d", constants.ContainerTrainerPort)},
+							{Name: constants.LlamaFactoryEnvNumNodes, Value: "2"},
+							{Name: constants.LlamaFactoryEnvNumProcPerNode, Value: "1"},
+							{Name: constants.LlamaFactoryEnvNodeRank, ValueFrom: &corev1.EnvVarSource{
+								FieldRef: &corev1.ObjectFieldSelector{FieldPath: constants.JobCompletionIndexFieldPath},
+							}},
+							{Name: constants.LlamaFactoryEnvMasterAddr, Value: "test-job-node-0-0.test-job"},
+							{Name: constants.LlamaFactoryEnvMasterPort, Value: fmt.Sprintf("%d", constants.ContainerTrainerPort)},
+							{Name: constants.LlamaFactoryEnvForceTorchrun, Value: "1"},
+						}...,
+					).
+					Obj(),
+			},
+		},
 		"succeeded to build JobSet with OpenMPI values from the TrainJob": {
 			ObjCmpOpts: cmp.Options{
 				cmp.Comparer(testingutil.MPISecretDataComparer),
